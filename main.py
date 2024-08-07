@@ -1,42 +1,27 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score
 import streamlit as st
 import joblib
 
-#importation du fichier
-data = pd.read_csv('C:/Users/ashin/PycharmProjects/Financial_inclusion.csv')
+# Importation du fichier
+data = pd.read_csv('Financial_inclusion.csv')
 
-print(data.info())
-
-# Afficher des statistiques descriptives
-print(data.describe())
 
 # Gérer les valeurs manquantes
 numeric_cols = data.select_dtypes(include=['float64', 'int64']).columns
 data[numeric_cols] = data[numeric_cols].fillna(data[numeric_cols].median())
 
-
 # Remplacer les valeurs manquantes dans les colonnes catégorielles par le mode
 categorical_cols = data.select_dtypes(include=['object']).columns
 data[categorical_cols] = data[categorical_cols].fillna(data[categorical_cols].mode().iloc[0])
 
-#suppresion doublons
-print(data.duplicated().sum())
+# Suppression des doublons
 data.drop_duplicates(inplace=True)
 
-#gérer les valeurs aberants
-# Boxplot pour la taille des ménages
-sns.boxplot(data['household_size'])
-plt.show()
-
-# Boxplot pour l'âge des répondants
-sns.boxplot(data['age_of_respondent'])
-plt.show()
 
 # Suppression des valeurs aberrantes (si nécessaire)
 Q1 = data['household_size'].quantile(0.25)
@@ -44,45 +29,64 @@ Q3 = data['household_size'].quantile(0.75)
 IQR = Q3 - Q1
 data = data[~((data['household_size'] < (Q1 - 1.5 * IQR)) | (data['household_size'] > (Q3 + 1.5 * IQR)))]
 
+# Séparer les caractéristiques et la cible avant l'encodage
+X = data.drop('bank_account', axis=1)
+y = data['bank_account']
+
 # Encodage des variables catégorielles
-data_encoded = pd.get_dummies(data)
+X_encoded = pd.get_dummies(X)
 
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+# Division en ensembles d'entraînement et de test
+X_train, X_test, y_train, y_test = train_test_split(X_encoded, y, test_size=0.2, random_state=42)
 
-# Séparer les caractéristiques et la cible
-X = data_encoded.drop('target', axis=1)
-y = data_encoded['target']
+# Entraînement du classifieur
+clf = RandomForestClassifier()
+clf.fit(X_train, y_train)
 
-# Diviser les données
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+# Prédiction sur l'ensemble de test
+y_pred = clf.predict(X_test)
 
-# Entraîner le modèle
-model = RandomForestClassifier()
-model.fit(X_train, y_train)
 
-# Prédictions et évaluation
-y_pred = model.predict(X_test)
-print("Accuracy:", accuracy_score(y_test, y_pred))
-
-import streamlit as st
+# Sauvegarder le modèle
+joblib.dump(clf, 'model.pkl')
 
 # Charger le modèle
-import joblib
 model = joblib.load('model.pkl')
 
 # Créer l'application Streamlit
 st.title("Prédiction d'utilisation de compte bancaire")
 
 # Ajouter des champs de saisie
-age = st.number_input("Âge", min_value=18, max_value=100)
-income = st.number_input("Revenu")
-# Ajouter d'autres champs selon les fonctionnalités de votre modèle
+country = st.text_input("Pays")
+year = st.number_input("Année", min_value=1900, max_value=2100)
+uniqueid = st.text_input("ID unique")
+bank_account = st.selectbox("Compte bancaire", ["Oui", "Non"])
+location_type = st.selectbox("Type de lieu", ["Rural", "Urbain"])
+cellphone_access = st.selectbox("Accès au téléphone portable", ["Oui", "Non"])
+household_size = st.number_input("Taille du ménage", min_value=1)
+age_of_respondent = st.number_input("Âge du répondant", min_value=18)
+gender_of_respondent = st.selectbox("Genre du répondant", ["Homme", "Femme"])
+relationship_with_head = st.selectbox("Relation avec le chef de ménage", ["Conjoint", "Enfant", "Autre"])
+marital_status = st.selectbox("État civil", ["Célibataire", "Marié", "Divorcé", "Veuf"])
+education_level = st.selectbox("Niveau d'éducation", ["Aucun", "École primaire", "École secondaire", "Université"])
+job_type = st.selectbox("Type d'emploi", ["Agriculteur", "Employé", "Ouvrier", "Autre"])
 
 # Bouton de validation
 if st.button('Faire une prédiction'):
-    features = [[age, income]]  # Remplir avec les autres fonctionnalités
-    prediction = model.predict(features)
-    st.write("Probabilité d'utilisation d'un compte bancaire : ", prediction)
+    features = pd.DataFrame([[country, year, uniqueid, bank_account, location_type, cellphone_access,
+                              household_size, age_of_respondent, gender_of_respondent,
+                              relationship_with_head, marital_status, education_level, job_type]],
+                            columns=['country', 'year', 'uniqueid', 'bank_account', 'location_type',
+                                     'cellphone_access', 'household_size', 'age_of_respondent',
+                                     'gender_of_respondent', 'relationship_with_head', 'marital_status',
+                                     'education_level', 'job_type'])
+    features_encoded = pd.get_dummies(features)
+
+    # Align with model features
+    features_encoded = features_encoded.reindex(columns=X_encoded.columns, fill_value=0)
+
+    prediction = model.predict(features_encoded)
+    st.write("Probabilité d'utilisation d'un compte bancaire : ", prediction[0])
+
+
 
